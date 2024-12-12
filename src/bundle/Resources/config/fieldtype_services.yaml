@@ -49,6 +49,8 @@ services:
             - '@ibexa.api.service.location'
             - '@ibexa.api.service.content'
             - '@router'
+            - '@Ibexa\Core\MVC\Symfony\SiteAccess\SiteAccessServiceInterface'
+            - '@ibexa.config.resolver'
             - '@?logger'
         tags:
             - {name: ibexa.field_type.richtext.converter.output.xhtml5, priority: 0}
