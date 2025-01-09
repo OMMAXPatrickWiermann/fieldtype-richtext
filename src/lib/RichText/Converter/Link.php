@@ -19,6 +19,8 @@ use Ibexa\Contracts\FieldTypeRichText\RichText\Converter;
 use Ibexa\Core\MVC\Symfony\Routing\UrlAliasRouter;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Routing\RouterInterface;
+use Ibexa\Core\MVC\Symfony\SiteAccess\SiteAccessServiceInterface;
+use Ibexa\Contracts\Core\SiteAccess\ConfigResolverInterface;
 
 class Link implements Converter
 {
@@ -42,15 +44,34 @@ class Link implements Converter
      */
     protected $logger;
 
+    /**
+     * @var \Ibexa\Core\MVC\Symfony\SiteAccess\SiteAccessServiceInterface
+     */
+    private SiteAccessServiceInterface $siteAccessService;
+
+    /**
+     * @string
+     */
+    protected $languageCode;
+
+    /**
+     * @array
+     */
+    protected $richTextSiteaccessMapgging;
+
     public function __construct(
         LocationService $locationService,
         ContentService $contentService,
         RouterInterface $router,
+        SiteAccessServiceInterface $siteAccessService,
+        protected readonly ConfigResolverInterface $configResolver,
         LoggerInterface $logger = null
     ) {
         $this->locationService = $locationService;
         $this->contentService = $contentService;
         $this->router = $router;
+        $this->siteAccessService = $siteAccessService;
+        $this->richTextSiteaccessMapgging = $this->configResolver->getParameter('mapping', 'rte_siteaccess');
         $this->logger = $logger;
     }
 
@@ -142,12 +163,46 @@ class Link implements Converter
 
     private function generateUrlAliasForLocation(Location $location, string $fragment): string
     {
+        $targetSiteaccess = $this->buildTargetSiteaccess($location);
         $urlAlias = $this->router->generate(
             UrlAliasRouter::URL_ALIAS_ROUTE_NAME,
-            ['location' => $location]
+            [
+                'location' => $location,
+                'siteaccess' => $targetSiteaccess
+            ],
+            RouterInterface::ABSOLUTE_URL
         );
 
         return $urlAlias . $fragment;
+    }
+
+    private function buildTargetSiteaccess($location)
+    {
+        $currentSiteaccessName = $this->siteAccessService->getCurrent()?->name;
+
+        try {
+            if($this->richTextSiteaccessMapgging) {
+                $siteaccesses = array_keys($this->richTextSiteaccessMapgging);
+                $matchedRootLocationId = array_intersect($siteaccesses, $location->path);
+
+                if(!empty($matchedRootLocationId)) {
+                    $matchedId = array_shift($matchedRootLocationId);
+                    $languageSiteaccess = $this->richTextSiteaccessMapgging[$matchedId];
+
+                    foreach($this->richTextSiteaccessMapgging as $entryPoint) {
+                        $languageCode = array_search($currentSiteaccessName, $entryPoint);
+                        if(!empty($languageCode)) {
+                            $targetSiteaccess = $this->richTextSiteaccessMapgging[$matchedId][$languageCode];
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            $targetSiteaccess = $currentSiteaccessName;
+        }
+
+        return $targetSiteaccess ?? $currentSiteaccessName;
     }
 }
 
